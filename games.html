@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Elliott's Volleyball Game</title>
+    <style>
+        :root {
+            --bg-page: #f5f7fa;
+            --bg-header: #183b56;
+            --bg-card: #eaf0f4;
+            --accent: #ffb703;
+            --text-primary: #233445;
+            --text-light: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background-color: var(--bg-page);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        header {
+            background: linear-gradient(180deg, #183b56 0%, #142b41 100%);
+            color: var(--text-light);
+            padding: 1rem 0;
+            position: sticky; top: 0; z-index: 10;
+        }
+        .wrap { max-width: 960px; margin: 0 auto; padding: 0 1rem; }
+        nav a { color: var(--text-light); text-decoration: none; margin-right: 1rem; font-weight: 600; }
+        nav a:hover { text-decoration: underline; }
+
+        main { padding: 2rem 0; }
+        .card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 8px 22px rgba(0,0,0,.08);
+        }
+
+        /* Game styles */
+        .game-shell {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            align-items: start;
+        }
+        canvas {
+            width: 100%;
+            height: auto;
+            background: linear-gradient(180deg, #cde6ff 0%, #b8dcff 60%, #87c7ff 60%, #87c7ff 100%);
+            border-radius: 12px;
+            box-shadow: inset 0 2px 12px rgba(0,0,0,.15);
+        }
+
+        .hud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem 1.25rem;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .hud .stat { font-weight: 700; }
+        .btn {
+            appearance: none;
+            border: none;
+            background: var(--bg-header);
+            color: var(--text-light);
+            padding: .6rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: transform .08s ease, opacity .2s ease;
+        }
+        .btn:hover { opacity: .92; }
+        .btn:active { transform: scale(.98); }
+
+        .controls { display: flex; gap: .5rem; }
+        .control-btn { flex: 1; padding: .8rem 1rem; }
+        @media (min-width: 680px) {
+            .game-shell { grid-template-columns: 2fr 1fr; }
+        }
+        .instructions { font-size: .95rem; }
+        .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: #fff; border: 1px solid #ccd; padding: .1rem .35rem; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="wrap">
+            <h1 style="margin:0;">Games</h1>
+            <nav aria-label="Breadcrumbs">
+                <a href="index.html">Home</a>
+                <span aria-hidden="true">›</span>
+                <span>Volleyball Keep-Up</span>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="wrap game-shell">
+            <section class="card" aria-label="Volleyball game area">
+                <div class="hud">
+                    <div class="stat">Score: <span id="score">0</span></div>
+                    <div class="stat">Lives: <span id="lives">3</span></div>
+                    <div class="stat">High score: <span id="high">0</span></div>
+                    <div class="controls">
+                        <button id="startBtn" class="btn">Start</button>
+                        <button id="pauseBtn" class="btn" aria-pressed="false">Pause</button>
+                        <button id="resetBtn" class="btn">Reset</button>
+                    </div>
+                </div>
+                <canvas id="game" width="840" height="520" role="img" aria-label="A volleyball court with a ball and a paddle representing hands"></canvas>
+                <div class="controls" aria-hidden="false" aria-label="Touch controls for mobile">
+                    <button id="leftBtn" class="btn control-btn" title="Move left">◀ Left</button>
+                    <button id="upBtn" class="btn control-btn" title="Hit Up">▲ Up</button>
+                    <button id="rightBtn" class="btn control-btn" title="Move right">Right ▶</button>
+                </div>
+            </section>
+
+            <aside class="card instructions">
+                <h2>How to Play – Volleyball Keep‑Up</h2>
+                <p>Keep the ball from hitting the ground by moving the paddle (your hands) left and right and using an upward strike to send the ball back high. Each successful bump adds to your score. Miss the ball and you lose a life. You have <strong>3 lives</strong>.</p>
+                <ul>
+                    <li><span class="kbd">←</span>/<span class="kbd">→</span> or <span class="kbd">A</span>/<span class="kbd">D</span> – move the paddle left and right (hold to move)</li>
+                    <li><span class="kbd">↑</span> or <span class="kbd">W</span> or the on-screen <strong>▲ Up</strong> button – make the paddle jump/up‑strike (timing this when the paddle meets the ball gives a stronger hit)</li>
+                    <li><span class="kbd">Space</span> – start / pause the game</li>
+                    <li>Touch buttons work on mobile; the game will prevent page scrolling while running for a better play experience</li>
+                </ul>
+                <p>Your <strong>high score</strong> is saved in your browser.</p>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+    (function() {
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // Court metrics
+        const W = canvas.width;
+        const H = canvas.height;
+        const FLOOR_Y = H * 0.85;
+
+        // Game state
+        let score = 0;
+        let lives = 3;
+        let running = false;
+        let paused = false;
+        let high = Number(localStorage.getItem('vb_high') || 0);
+        let respawning = false;
+        let respawnIntervalId = null;
+        let respawnCountdown = 0;
+        let milestoneMessage = null;
+        let milestoneMessageTime = 0;
+        let consecutiveNormalHits = 0;  // Track normal hits without up-strike
+
+        // Motivational quotes for score milestones
+        const milestoneQuotes = {
+            5: "You're on fire! 🔥",
+            10: "Unstoppable! Keep it going!",
+            20: "Incredible hustle! You've got this!",
+            30: "Champion! You're dominating! 💪"
+        };
+
+        // Paddle
+        const paddle = {
+            x: W/2,
+            y: FLOOR_Y - 12,
+            w: 120,
+            h: 16,
+            speed: 7.2,
+            vy: 0,
+            jumping: false
+        };
+
+        // Ball
+        const ball = {
+            x: W/2,
+            y: H*0.25,
+            r: 16,
+            vx: 2.4,
+            vy: 0,
+            gravity: 0.35,
+            bounce: -0.92,
+            rotation: 0
+        };
+
+        // Input
+        const keys = { left:false, right:false };
+        document.addEventListener('keydown', (e)=>{
+            // prevent page scrolling when using game keys
+            if(['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key) || e.code === 'Space'){
+                e.preventDefault();
+            }
+            if(['ArrowLeft','a','A'].includes(e.key)) keys.left = true;
+            if(['ArrowRight','d','D'].includes(e.key)) keys.right = true;
+            if(['ArrowUp','w','W'].includes(e.key)) hitUp();
+            if(e.code === 'Space') toggleStartPause();
+        });
+        document.addEventListener('keyup', (e)=>{
+            if(['ArrowLeft','a','A'].includes(e.key)) keys.left = false;
+            if(['ArrowRight','d','D'].includes(e.key)) keys.right = false;
+        });
+
+        // Touch buttons
+        const leftBtn = document.getElementById('leftBtn');
+        const upBtn = document.getElementById('upBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        function bindHold(btn, dir) {
+            let holding = false;
+            const onDown = (e)=>{ e.preventDefault(); holding = true; keys[dir] = true; };
+            const onUp = (e)=>{ e.preventDefault(); holding = false; keys[dir] = false; };
+            btn.addEventListener('mousedown', onDown);
+            btn.addEventListener('mouseup', onUp);
+            btn.addEventListener('mouseleave', onUp);
+            btn.addEventListener('touchstart', onDown, {passive:false});
+            btn.addEventListener('touchend', onUp);
+            btn.addEventListener('touchcancel', onUp);
+        }
+        bindHold(leftBtn, 'left');
+        bindHold(rightBtn, 'right');
+        // simple click handler for Up button (single hit)
+        if(upBtn){
+            upBtn.addEventListener('click', (e)=>{ e.preventDefault(); hitUp(); });
+        }
+
+        // Buttons
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const highEl = document.getElementById('high');
+        highEl.textContent = high;
+
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        startBtn.addEventListener('click', ()=>{ if(!running) startGame(); });
+        pauseBtn.addEventListener('click', ()=>{ if(running) togglePause(); });
+        resetBtn.addEventListener('click', resetGame);
+
+        function startGame(){
+            running = true; paused = false; score = 0; lives = 3;
+            scoreEl.textContent = score; livesEl.textContent = lives;
+            ball.x = W/2; ball.y = H*0.25; ball.vx = 2.4; ball.vy = 0;
+            paddle.x = W/2; paddle.y = FLOOR_Y - 12; paddle.vy = 0; paddle.jumping = false;
+            // prevent the page from scrolling while the game is running
+            try{ document.body.style.overflow = 'hidden'; }catch(e){}
+            animate();
+        }
+        function toggleStartPause(){
+            if(!running) startGame(); else togglePause();
+        }
+        function togglePause(){
+            paused = !paused;
+            pauseBtn.setAttribute('aria-pressed', String(paused));
+            // If respawning and trying to pause (Space pressed), don't allow it - stay paused until countdown ends
+            if(respawning){
+                paused = true;  // Force paused state during respawn
+                pauseBtn.setAttribute('aria-pressed', 'true');
+            }
+        }
+        function resetGame(){
+            running = false; paused = false; score = 0; lives = 3;
+            scoreEl.textContent = 0; livesEl.textContent = 3;
+            // clear any pending respawn countdown
+            if(respawnIntervalId){ clearInterval(respawnIntervalId); respawnIntervalId = null; }
+            respawning = false;
+            respawnCountdown = 0;
+            milestoneMessage = null;  // Clear milestone message
+            milestoneMessageTime = 0;
+            try{ document.body.style.overflow = ''; }catch(e){}
+            draw();
+        }
+
+        // Make the paddle jump/up-strike (called by Up button or ArrowUp/W)
+        function hitUp(){
+            if(!running) return;
+            // only allow a jump if paddle is essentially on the ground and not already jumping
+            if(!paddle.jumping && Math.abs(paddle.y - (FLOOR_Y - 12)) < 2){
+                paddle.vy = -10; // upward velocity
+                paddle.jumping = true;
+            }
+        }
+
+        function update(){
+            // Move paddle
+            if(keys.left) paddle.x -= paddle.speed;
+            if(keys.right) paddle.x += paddle.speed;
+            paddle.x = Math.max(paddle.w/2, Math.min(W - paddle.w/2, paddle.x));
+
+            // Paddle vertical movement (jumping)
+            if(paddle.jumping){
+                paddle.vy += 0.6; // gravity for paddle
+                paddle.y += paddle.vy;
+                if(paddle.y >= FLOOR_Y - 12){
+                    paddle.y = FLOOR_Y - 12;
+                    paddle.vy = 0;
+                    paddle.jumping = false;
+                }
+            }
+
+            // Ball physics
+            ball.vy += ball.gravity;
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // Wall bounces
+            if(ball.x < ball.r){ ball.x = ball.r; ball.vx *= -1; }
+            if(ball.x > W - ball.r){ ball.x = W - ball.r; ball.vx *= -1; }
+
+            // Paddle collision - improved detection
+            const paddleLeft = paddle.x - paddle.w/2;
+            const paddleRight = paddle.x + paddle.w/2;
+            const paddleTop = paddle.y;
+            const paddleBottom = paddle.y + paddle.h;
+            const ballLeft = ball.x - ball.r;
+            const ballRight = ball.x + ball.r;
+            const ballTop = ball.y - ball.r;
+            const ballBottom = ball.y + ball.r;
+            
+            if(ballRight >= paddleLeft && ballLeft <= paddleRight && ballBottom >= paddleTop && ballTop <= paddleBottom){
+                // Ensure ball doesn't go below paddle
+                if(ball.vy > 0){
+                    ball.y = paddleTop - ball.r;
+                }
+                // Offset-based angle change
+                const offset = (ball.x - paddle.x) / (paddle.w/2); // -1..1
+                // If paddle is moving upward (jump strike), give a stronger upward velocity
+                if(paddle.vy < -1){
+                    ball.vy = -13;  // Strong upward velocity
+                    ball.vx += offset * 4;  // Stronger horizontal component
+                    ball.rotation += 0.8;  // Add strong spin
+                    consecutiveNormalHits = 0;  // Reset counter on up-strike
+                } else {
+                    consecutiveNormalHits++;  // Increment normal hit counter
+                    // If 3+ normal hits without up-strike, penalty shot
+                    if(consecutiveNormalHits >= 3){
+                        ball.vy = 2;  // Shoot horizontally/slightly down
+                        ball.vx = (offset > 0 ? 1 : -1) * 8;  // Fast horizontal
+                        ball.rotation += 0.2;
+                        consecutiveNormalHits = 0;  // Reset counter
+                        milestoneMessage = 'Penalty! No up-strike!';
+                        milestoneMessageTime = 0;
+                    } else {
+                        ball.vy = -7;  // Weaker upward velocity for normal hit
+                        ball.vx += offset * 2;  // Weaker horizontal component
+                        ball.rotation += 0.4;  // Add moderate spin
+                    }
+                }
+                score += 1; scoreEl.textContent = score;
+                // Check if score hit a milestone and show motivational message
+                if(milestoneQuotes[score]){
+                    milestoneMessage = milestoneQuotes[score];
+                    milestoneMessageTime = 0;  // Start time counter
+                }
+            }
+
+            // Check if ball crossed net (award bonus points only if above net top)
+            const netX = W/2;
+            const netY = FLOOR_Y - 180;  // Net top
+            // Only award points if ball is above net top and crosses the net line
+            if(ball.y < netY && Math.abs(ball.x - netX) < ball.r){
+                // Ball just crossed the net line above the top
+                if((ball.x - ball.vx <= netX && ball.x > netX) || (ball.x - ball.vx >= netX && ball.x < netX)){
+                    score += 2;  // Bonus 2 points for crossing net
+                    scoreEl.textContent = score;
+                    milestoneMessage = 'Net cross! +2';
+                    milestoneMessageTime = 0;
+                }
+            }
+
+            // Floor miss
+            if(ball.y > FLOOR_Y + ball.r){
+                lives -= 1; livesEl.textContent = lives;
+                // If no lives left, end game
+                if(lives <= 0){
+                    running = false; paused = false;
+                    try{ document.body.style.overflow = ''; }catch(e){}
+                    if(score > high){ high = score; localStorage.setItem('vb_high', String(high)); }
+                } else {
+                    // start a 5-second respawn countdown and show warning
+                    paused = true;
+                    respawning = true;
+                    respawnCountdown = 5;
+                    consecutiveNormalHits = 0;  // Reset on respawn
+                    // clear any existing interval
+                    if(respawnIntervalId){ clearInterval(respawnIntervalId); respawnIntervalId = null; }
+                    respawnIntervalId = setInterval(()=>{
+                        respawnCountdown--;
+                        if(respawnCountdown <= 0){
+                            clearInterval(respawnIntervalId);
+                            respawnIntervalId = null;
+                            respawning = false;
+                            // Reset ball to center BEFORE unpausing
+                            ball.x = W/2;
+                            ball.y = H*0.22;
+                            ball.vx = (Math.random() < 0.5 ? -1 : 1) * 2.4;
+                            ball.vy = 0;
+                            ball.rotation = 0;
+                            paddle.y = FLOOR_Y - 12;
+                            paddle.vy = 0;
+                            paddle.jumping = false;
+                            respawnCountdown = 0;
+                            paused = false;
+                        }
+                    }, 1000);
+                }
+            }
+        }
+
+        function drawCourt(){
+            // Sky/gradient handled by canvas background. Draw court lines.
+            ctx.save();
+            // Court rectangle
+            ctx.fillStyle = '#6bb0ff';
+            ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+            // Net - make it taller
+            const netY = FLOOR_Y - 180;  // Taller net
+            ctx.fillStyle = '#ffffffcc';
+            ctx.fillRect(W/2 - 6, netY, 12, 180);
+            // Net grid
+            ctx.strokeStyle = '#ffffff88';
+            for(let y = netY; y <= FLOOR_Y; y += 12){
+                ctx.beginPath();
+                ctx.moveTo(W/2 - 6, y); ctx.lineTo(W/2 + 6, y); ctx.stroke();
+            }
+            // Baseline
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, FLOOR_Y, W, 4);
+            ctx.restore();
+        }
+
+        function drawPaddle(){
+            ctx.save();
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(paddle.x, paddle.y + paddle.h + 18, paddle.w*0.45, 10, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Paddle body
+            const grd = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.h);
+            grd.addColorStop(0, '#183b56');
+            grd.addColorStop(1, '#274a67');
+            ctx.fillStyle = grd;
+            ctx.strokeStyle = '#0c2235';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(paddle.x - paddle.w/2, paddle.y, paddle.w, paddle.h, 8);
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawBall(){
+            ctx.save();
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(ball.x, FLOOR_Y + 10, 14, 6, 0, 0, Math.PI*2);
+            ctx.fill();
+            // Ball body - white background
+            const grd = ctx.createRadialGradient(ball.x-6, ball.y-6, 4, ball.x, ball.y, ball.r);
+            grd.addColorStop(0, '#ffffff');
+            grd.addColorStop(0.7, '#f5f5f5');
+            grd.addColorStop(1, '#e8e8e8');
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+            ctx.fill();
+            // Save and apply rotation
+            ctx.save();
+            ctx.translate(ball.x, ball.y);
+            ctx.rotate(ball.rotation);
+            // Volleyball panels - horizontal and vertical divisions
+            ctx.strokeStyle = '#d4a574';
+            ctx.lineWidth = 2;
+            // Vertical lines
+            for(let i = 1; i < 3; i++){
+                const x = -ball.r + (i * ball.r * 2 / 3);
+                ctx.beginPath();
+                ctx.moveTo(x, -ball.r);
+                ctx.lineTo(x, ball.r);
+                ctx.stroke();
+            }
+            // Horizontal lines
+            for(let i = 1; i < 2; i++){
+                const y = -ball.r + (i * ball.r * 2 / 2);
+                ctx.beginPath();
+                ctx.moveTo(-ball.r, y);
+                ctx.lineTo(ball.r, y);
+                ctx.stroke();
+            }
+            // Curved seams for volleyball effect
+            ctx.strokeStyle = '#b8956f';
+            ctx.lineWidth = 1.5;
+            for(let i = 0; i < 6; i++){
+                const ang = (i / 6) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, ball.r * 0.6, ang, ang + Math.PI/6);
+                ctx.stroke();
+            }
+            ctx.restore();  // Restore from rotation
+            ctx.restore();  // Restore from save
+        }
+
+        function message(text){
+            ctx.save();
+            ctx.fillStyle = 'rgba(24,59,86,0.85)';
+            ctx.roundRect(W*0.2, H*0.35, W*0.6, 80, 12);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.font = '700 24px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+            ctx.fillText(text, W/2, H*0.35 + 50);
+            ctx.restore();
+        }
+
+        function draw(){
+            ctx.clearRect(0,0,W,H);
+            drawCourt();
+            drawPaddle();
+            drawBall();
+            if(!running){
+                if(lives<=0){ message('Game Over – press Space or Start to play again'); }
+                else { message('Press Space or Start to begin'); }
+            } else if(paused){ 
+                if(respawning && respawnCountdown > 0){
+                    message(`Life lost — respawning in ${respawnCountdown}...`);
+                } else {
+                    message('Paused – press Space or Pause to resume'); 
+                }
+            }
+            // Draw milestone message in court area with fade
+            if(milestoneMessage !== null){
+                const alpha = Math.max(0, 1 - (milestoneMessageTime / 3000));  // Fade from 1 to 0 over 3 seconds
+                ctx.save();
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+                ctx.textAlign = 'center';
+                ctx.font = '700 28px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+                ctx.shadowColor = `rgba(24, 59, 86, ${alpha * 0.8})`;
+                ctx.shadowBlur = 8;
+                ctx.fillText(milestoneMessage, W/2, FLOOR_Y - 60);
+                ctx.restore();
+            }
+        }
+
+        function loop(){
+            if(!running){ draw(); return; }
+            if(!paused){ update(); } 
+            else if(respawning){ 
+                // Allow paddle movement during respawn countdown even though paused
+                if(keys.left) paddle.x -= paddle.speed;
+                if(keys.right) paddle.x += paddle.speed;
+                paddle.x = Math.max(paddle.w/2, Math.min(W - paddle.w/2, paddle.x));
+            }
+            // Update milestone message timer
+            if(milestoneMessage !== null){
+                milestoneMessageTime += 16;  // ~16ms per frame at 60fps
+                if(milestoneMessageTime > 1000){
+                    milestoneMessage = null;
+                }
+            }
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function animate(){ requestAnimationFrame(loop); }
+
+        // Initial render
+        draw();
+    })();
+    </script>
+</body>
+</html>
